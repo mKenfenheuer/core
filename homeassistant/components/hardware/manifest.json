@@ -1,6 +1,7 @@
 {
   "domain": "hardware",
   "name": "Hardware",
+  "after_dependencies": ["hassio"],
   "codeowners": ["@home-assistant/core"],
   "config_flow": false,
   "documentation": "https://www.home-assistant.io/integrations/hardware",

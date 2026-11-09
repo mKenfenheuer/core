@@ -5,8 +5,8 @@ from datetime import timedelta
 import os
 from unittest.mock import AsyncMock, Mock, patch
 
-from aiohasupervisor import SupervisorError
-from aiohasupervisor.models import AddonState, InstalledAddonComplete
+from aiohasupervisor import SupervisorError, SupervisorNotFoundError
+from aiohasupervisor.models import GPU, AddonState, HardwareGPU, InstalledAddonComplete
 from freezegun.api import FrozenDateTimeFactory
 import pytest
 from pytest_homeassistant.common import MockConfigEntry, async_fire_time_changed
@@ -20,7 +20,7 @@ from homeassistant.components.hassio.const import (
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 
@@ -291,3 +291,128 @@ async def test_stats_addon_sensor_rename(
     async_fire_time_changed(hass)
     await hass.async_block_till_done(wait_background_tasks=True)
     addon_stats.assert_not_called()
+
+
+MOCK_GPUS = HardwareGPU(
+    gpus=[
+        GPU(
+            address="0000:01:00.0",
+            vendor="nvidia",
+            name="NVIDIA GeForce RTX 3090",
+            driver="nvidia",
+            driver_version="615.78.08",
+            utilization=7.0,
+            memory_used=2982150144,
+            memory_total=25769803776,
+            temperature=34.0,
+            power=16.37,
+        ),
+        GPU(
+            address="0000:00:02.0",
+            vendor="intel",
+            name="Intel GPU [8086:46a6]",
+            driver="i915",
+            driver_version="6.18.60-haos",
+            utilization=None,
+            memory_used=None,
+            memory_total=None,
+            temperature=None,
+            power=None,
+        ),
+    ]
+)
+GPU_ENTITY_PREFIX = "sensor.nvidia_geforce_rtx_3090"
+
+
+@pytest.mark.usefixtures("entity_registry_enabled_by_default")
+async def test_gpu_sensors(
+    hass: HomeAssistant,
+    supervisor_client: AsyncMock,
+    entity_registry: er.EntityRegistry,
+    device_registry: dr.DeviceRegistry,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Test sensors for the statistics of the host GPUs."""
+    supervisor_client.hardware.gpu.return_value = MOCK_GPUS
+    config_entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=DOMAIN)
+    config_entry.add_to_hass(hass)
+    with patch.dict(os.environ, MOCK_ENVIRON):
+        assert await async_setup_component(hass, DOMAIN, {"hassio": {}})
+    await hass.async_block_till_done()
+
+    assert hass.states.get(f"{GPU_ENTITY_PREFIX}_utilization").state == "7.0"
+    assert float(
+        hass.states.get(f"{GPU_ENTITY_PREFIX}_memory_used").state
+    ) == pytest.approx(2982150144 / 1024**3)
+    assert hass.states.get(f"{GPU_ENTITY_PREFIX}_memory_percent").state == "11.6"
+    assert hass.states.get(f"{GPU_ENTITY_PREFIX}_temperature").state == "34.0"
+    assert hass.states.get(f"{GPU_ENTITY_PREFIX}_power").state == "16.37"
+
+    device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, "gpu_0000:01:00.0"), config_entry.entry_id
+    )
+    assert device.name == "NVIDIA GeForce RTX 3090"
+    assert device.manufacturer == "NVIDIA"
+    assert device.sw_version == "615.78.08"
+    assert (
+        device.via_device_id
+        == device_registry.async_get_device_by_identifier(
+            (DOMAIN, "host"), config_entry.entry_id
+        ).id
+    )
+
+    # The driver of the Intel GPU reports no statistics
+    assert not [
+        entry
+        for entry in er.async_entries_for_config_entry(
+            entity_registry, config_entry.entry_id
+        )
+        if entry.unique_id.startswith("gpu_0000:00:02.0")
+    ]
+
+    supervisor_client.hardware.gpu.return_value = HardwareGPU(gpus=[])
+    freezer.tick(HASSIO_STATS_UPDATE_INTERVAL + timedelta(seconds=1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+    assert hass.states.get(f"{GPU_ENTITY_PREFIX}_utilization").state == (
+        STATE_UNAVAILABLE
+    )
+
+
+@pytest.mark.parametrize(
+    ("side_effect", "log_message"),
+    [
+        pytest.param(SupervisorNotFoundError(), "", id="supervisor-without-support"),
+        pytest.param(
+            SupervisorError("nvidia-smi failed"),
+            "Could not fetch GPU statistics: nvidia-smi failed",
+            id="supervisor-error",
+        ),
+    ],
+)
+async def test_gpu_sensors_no_data(
+    hass: HomeAssistant,
+    supervisor_client: AsyncMock,
+    entity_registry: er.EntityRegistry,
+    caplog: pytest.LogCaptureFixture,
+    side_effect: Exception,
+    log_message: str,
+) -> None:
+    """Test no GPU sensors without GPU statistics from the Supervisor."""
+    supervisor_client.hardware.gpu.side_effect = side_effect
+    config_entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=DOMAIN)
+    config_entry.add_to_hass(hass)
+    with patch.dict(os.environ, MOCK_ENVIRON):
+        assert await async_setup_component(hass, DOMAIN, {"hassio": {}})
+    await hass.async_block_till_done()
+
+    assert config_entry.state is ConfigEntryState.LOADED
+    assert not [
+        entry
+        for entry in er.async_entries_for_config_entry(
+            entity_registry, config_entry.entry_id
+        )
+        if entry.unique_id.startswith("gpu_")
+    ]
+    assert log_message in caplog.text

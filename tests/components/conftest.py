@@ -17,6 +17,7 @@ from aiohasupervisor import SupervisorClient, SupervisorNotFoundError
 from aiohasupervisor.addons import AddonsClient
 from aiohasupervisor.backups import BackupsClient
 from aiohasupervisor.discovery import DiscoveryClient
+from aiohasupervisor.hardware import HardwareClient
 from aiohasupervisor.homeassistant import HomeAssistantClient
 from aiohasupervisor.host import HostClient
 from aiohasupervisor.ingress import IngressClient
@@ -27,6 +28,7 @@ from aiohasupervisor.models import (
     Discovery,
     DockerNetwork,
     GreenInfo,
+    HardwareGPU,
     HomeAssistantInfo,
     HomeAssistantStats,
     HostInfo,
@@ -780,6 +782,8 @@ def supervisor_client() -> Generator[AsyncMock]:
     supervisor_client.addons = AsyncMock(spec=AddonsClient)
     supervisor_client.backups = AsyncMock(spec=BackupsClient)
     supervisor_client.discovery = AsyncMock(spec=DiscoveryClient)
+    supervisor_client.hardware = AsyncMock(spec=HardwareClient)
+    supervisor_client.hardware.gpu.return_value = HardwareGPU(gpus=[])
     supervisor_client.homeassistant = AsyncMock(spec=HomeAssistantClient)
     supervisor_client.host = AsyncMock(spec=HostClient)
     supervisor_client.ingress = AsyncMock(spec=IngressClient)

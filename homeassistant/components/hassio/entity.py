@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import override
 
 from aiohasupervisor.models import (
+    GPU,
     CIFSMountResponse,
     DiskMountResponse,
     HostInfo,
@@ -12,11 +13,12 @@ from aiohasupervisor.models import (
 )
 from aiohasupervisor.models.base import ContainerStats
 
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONTAINER_STATS, DOMAIN
+from .const import CONTAINER_STATS, DOMAIN, GPU_VENDORS
 from .coordinator import (
     AddonData,
     HassioAddOnDataUpdateCoordinator,
@@ -24,6 +26,52 @@ from .coordinator import (
     HassioStatsData,
     HassioStatsDataUpdateCoordinator,
 )
+
+
+class HassioGPUEntity(CoordinatorEntity[HassioStatsDataUpdateCoordinator]):
+    """Base entity for a GPU of the host."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: HassioStatsDataUpdateCoordinator,
+        entity_description: EntityDescription,
+        gpu: GPU,
+    ) -> None:
+        """Initialize base entity."""
+        super().__init__(coordinator)
+        self.entity_description = entity_description
+        self._address = gpu.address
+        self._attr_unique_id = f"gpu_{gpu.address}_{entity_description.key}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"gpu_{gpu.address}")},
+            manufacturer=GPU_VENDORS.get(gpu.vendor, gpu.vendor or None),
+            model=gpu.name,
+            name=gpu.name,
+            sw_version=gpu.driver_version,
+            via_device_id=dr.async_get_device_id_by_identifier(
+                coordinator.hass,
+                (DOMAIN, "host"),
+                config_entry_id=coordinator.config_entry.entry_id,
+            ),
+        )
+
+    @property
+    def _gpu(self) -> GPU | None:
+        return self.coordinator.data.gpus.get(self._address)
+
+    @property
+    def gpu(self) -> GPU:
+        """Return the GPU, asserting it is available."""
+        assert self._gpu is not None
+        return self._gpu
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return super().available and self._gpu is not None
 
 
 class HassioStatsEntity(CoordinatorEntity[HassioStatsDataUpdateCoordinator]):

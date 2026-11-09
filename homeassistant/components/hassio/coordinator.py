@@ -3,13 +3,14 @@
 import asyncio
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import logging
 from typing import Any, Literal, cast, override
 from uuid import UUID
 
 from aiohasupervisor import SupervisorError, SupervisorNotFoundError
 from aiohasupervisor.models import (
+    GPU,
     AddonsStats,
     AddonState,
     CIFSMountResponse,
@@ -882,10 +883,12 @@ class HassioStatsData:
     core: HomeAssistantStats | None
     supervisor: SupervisorStats | None
     addons: dict[str, AddonsStats | None]
+    gpus: dict[str, GPU] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a dictionary representation of the data."""
         return {
+            "gpus": {address: gpu.to_dict() for address, gpu in self.gpus.items()},
             "core": self.core.to_dict() if self.core is not None else None,
             "supervisor": (
                 self.supervisor.to_dict() if self.supervisor is not None else None
@@ -1259,7 +1262,20 @@ class HassioStatsDataUpdateCoordinator(DataUpdateCoordinator[HassioStatsData]):
             core=self.hass.data.get(DATA_CORE_STATS),
             supervisor=self.hass.data.get(DATA_SUPERVISOR_STATS),
             addons=self.hass.data.get(DATA_ADDONS_STATS) or {},
+            gpus=await self._fetch_gpus(),
         )
+
+    async def _fetch_gpus(self) -> dict[str, GPU]:
+        """Fetch GPUs of the host with current statistics."""
+        try:
+            result = await self.supervisor_client.hardware.gpu()
+        except SupervisorNotFoundError:
+            # Supervisor without GPU support
+            return {}
+        except SupervisorError as err:
+            _LOGGER.warning("Could not fetch GPU statistics: %s", err)
+            return {}
+        return {gpu.address: gpu for gpu in result.gpus}
 
     async def _fetch_stats(self) -> None:
         """Fetch container stats for subscribed entities."""

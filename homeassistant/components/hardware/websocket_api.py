@@ -5,12 +5,15 @@ from dataclasses import asdict
 from datetime import datetime, timedelta
 from typing import Any
 
+from aiohasupervisor import SupervisorError
 import probatio
 
 from homeassistant.components import websocket_api
+from homeassistant.components.hassio import get_supervisor_client
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.hassio import is_hassio
 from homeassistant.util import dt as dt_util
 
 from .const import DATA_HARDWARE
@@ -43,6 +46,41 @@ async def ws_info(
     connection.send_result(msg["id"], {"hardware": hardware_info})
 
 
+async def _async_get_gpus(hass: HomeAssistant) -> list[dict[str, Any]]:
+    """Return GPUs of the host with current statistics from the Supervisor."""
+    if not is_hassio(hass) or "hassio" not in hass.config.components:
+        return []
+
+    try:
+        result = await get_supervisor_client(hass).hardware.gpu()
+    except SupervisorError:
+        return []
+
+    return [
+        {
+            "address": gpu.address,
+            "name": gpu.name,
+            "vendor": gpu.vendor,
+            "driver": gpu.driver,
+            "driver_version": gpu.driver_version,
+            "utilization_percent": gpu.utilization,
+            "memory_used_mb": (
+                round(gpu.memory_used / 1024**2, 1)
+                if gpu.memory_used is not None
+                else None
+            ),
+            "memory_total_mb": (
+                round(gpu.memory_total / 1024**2, 1)
+                if gpu.memory_total is not None
+                else None
+            ),
+            "temperature": gpu.temperature,
+            "power": gpu.power,
+        }
+        for gpu in result.gpus
+    ]
+
+
 @callback
 @websocket_api.websocket_command(
     {
@@ -56,8 +94,7 @@ def ws_subscribe_system_status(
 
     system_status = hass.data[DATA_HARDWARE].system_status
 
-    @callback
-    def async_update_status(now: datetime) -> None:
+    async def async_update_status(now: datetime) -> None:
         # Although cpu_percent and virtual_memory access files in the /proc vfs, those
         # accesses do not block and we don't need to wrap the calls in an executor.
         # https://elixir.bootlin.com/linux/v5.19.4/source/fs/proc/stat.c
@@ -73,6 +110,7 @@ def ws_subscribe_system_status(
                 (virtual_memory.total - virtual_memory.available) / 1024**2, 1
             ),
             "memory_free_mb": round(virtual_memory.available / 1024**2, 1),
+            "gpus": await _async_get_gpus(hass),
             "timestamp": dt_util.utcnow().isoformat(),
         }
         for conn, msg_id in system_status.subscribers:

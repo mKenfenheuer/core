@@ -185,7 +185,7 @@ async def test_setup_api_ping(
         await hass.async_block_till_done()
 
     assert result
-    assert len(supervisor_client.mock_calls) == 17
+    assert len(supervisor_client.mock_calls) == 18
     assert get_core_info(hass)["version_latest"] == "1.0.0"
     assert is_hassio(hass)
 
@@ -423,7 +423,7 @@ async def test_setup_api_push_api_data(
         await hass.async_block_till_done()
 
     assert result
-    assert len(supervisor_client.mock_calls) == 17
+    assert len(supervisor_client.mock_calls) == 18
     supervisor_client.homeassistant.set_options.assert_called_once_with(
         HomeAssistantOptions(ssl=False, port=9999, refresh_token=None)
     )
@@ -439,7 +439,7 @@ async def test_setup_api_push_api_data_error(
         await hass.async_block_till_done()
 
     assert result
-    assert len(supervisor_client.mock_calls) == 17
+    assert len(supervisor_client.mock_calls) == 18
     assert "Failed to update Home Assistant options in Supervisor: boom" in caplog.text
 
 
@@ -460,7 +460,7 @@ async def test_setup_api_push_api_data_server_host(
         await hass.async_block_till_done()
 
     assert result
-    assert len(supervisor_client.mock_calls) == 17
+    assert len(supervisor_client.mock_calls) == 18
     supervisor_client.homeassistant.set_options.assert_called_once_with(
         HomeAssistantOptions(ssl=False, port=9999, refresh_token=None)
     )
@@ -475,7 +475,7 @@ async def test_setup_api_push_api_data_default(
         await hass.async_block_till_done()
 
     assert result
-    assert len(supervisor_client.mock_calls) == 17
+    assert len(supervisor_client.mock_calls) == 18
     supervisor_client.homeassistant.set_options.assert_called_once_with(
         HomeAssistantOptions(ssl=False, port=80, refresh_token=None)
     )
@@ -549,7 +549,7 @@ async def test_setup_api_existing_hassio_user(
         await hass.async_block_till_done()
 
     assert result
-    assert len(supervisor_client.mock_calls) == 17
+    assert len(supervisor_client.mock_calls) == 18
     supervisor_client.homeassistant.set_options.assert_called_once_with(
         HomeAssistantOptions(ssl=False, port=80, refresh_token=None)
     )
@@ -650,7 +650,7 @@ async def test_setup_migrates_legacy_hassio_store_to_config_entry(
     assert entry.options[OPTION_ADD_ON_BACKUP_RETAIN_COPIES] == 2
     assert entry.options[OPTION_CORE_BACKUP_BEFORE_UPDATE] is True
 
-    assert len(supervisor_client.mock_calls) == 17
+    assert len(supervisor_client.mock_calls) == 18
     supervisor_client.homeassistant.set_options.assert_called_once_with(
         HomeAssistantOptions(ssl=False, port=80, refresh_token=None)
     )
@@ -717,7 +717,7 @@ async def test_setup_core_push_config(
         await hass.async_block_till_done()
 
     assert result
-    assert len(supervisor_client.mock_calls) == 17
+    assert len(supervisor_client.mock_calls) == 18
     supervisor_client.supervisor.set_options.assert_called_once_with(
         SupervisorOptions(timezone="testzone")
     )
@@ -742,7 +742,7 @@ async def test_setup_core_push_config_error(
         await hass.async_block_till_done()
 
     assert result
-    assert len(supervisor_client.mock_calls) == 17
+    assert len(supervisor_client.mock_calls) == 18
     assert "Failed to update Supervisor options: boom" in caplog.text
 
 
@@ -758,7 +758,7 @@ async def test_setup_hassio_no_additional_data(
         await hass.async_block_till_done()
 
     assert result
-    assert len(supervisor_client.mock_calls) == 17
+    assert len(supervisor_client.mock_calls) == 18
 
 
 @pytest.mark.parametrize(
@@ -1537,7 +1537,7 @@ async def test_setup_hardware_integration(
         await hass.async_block_till_done(wait_background_tasks=True)
 
     assert result
-    assert len(supervisor_client.mock_calls) == 17
+    assert len(supervisor_client.mock_calls) == 18
     assert len(mock_setup_entry.mock_calls) == 1
 
 

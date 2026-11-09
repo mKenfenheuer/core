@@ -244,3 +244,6 @@ class SupervisorEntityModel(StrEnum):
     SUPERVISOR = "Home Assistant Supervisor"
     HOST = "Home Assistant Host"
     MOUNT = "Home Assistant Mount"
+
+
+GPU_VENDORS = {"amd": "AMD", "intel": "Intel", "nvidia": "NVIDIA"}

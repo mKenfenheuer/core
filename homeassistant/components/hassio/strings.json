@@ -24,6 +24,15 @@
       "disk_used": {
         "name": "Disk used"
       },
+      "gpu_memory_percent": {
+        "name": "Memory percent"
+      },
+      "gpu_memory_used": {
+        "name": "Memory used"
+      },
+      "gpu_utilization": {
+        "name": "Utilization"
+      },
       "memory_percent": {
         "name": "Memory percent"
       },

@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import override
 
+from aiohasupervisor.models import GPU
 from aiohasupervisor.models.base import ContainerStats
 
 from homeassistant.components.sensor import (
@@ -13,7 +14,13 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfInformation
+from homeassistant.const import (
+    PERCENTAGE,
+    EntityCategory,
+    UnitOfInformation,
+    UnitOfPower,
+    UnitOfTemperature,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -29,6 +36,7 @@ from .const import (
 from .coordinator import HassioStatsData
 from .entity import (
     HassioAddonEntity,
+    HassioGPUEntity,
     HassioHostEntity,
     HassioOSEntity,
     HassioStatsEntity,
@@ -61,6 +69,19 @@ class HassioHostSensorEntityDescription(SensorEntityDescription):
     """Hass.io host sensor entity description."""
 
     value_fn: Callable[[HostSensor], str | float | None]
+
+
+@dataclass(frozen=True, kw_only=True)
+class HassioGPUSensorEntityDescription(SensorEntityDescription):
+    """Hass.io GPU sensor entity description."""
+
+    value_fn: Callable[[GPU], float | None]
+
+
+def _gpu_memory_percent(gpu: GPU) -> float | None:
+    if gpu.memory_used is None or not gpu.memory_total:
+        return None
+    return round(gpu.memory_used / gpu.memory_total * 100, 1)
 
 
 ADDON_ENTITY_DESCRIPTIONS = (
@@ -109,6 +130,52 @@ OS_ENTITY_DESCRIPTIONS = (
         key="version_latest",
         translation_key="version_latest",
         value_fn=lambda entity: entity.os.version_latest,
+    ),
+)
+
+GPU_ENTITY_DESCRIPTIONS = (
+    HassioGPUSensorEntityDescription(
+        entity_registry_enabled_default=False,
+        key="utilization",
+        translation_key="gpu_utilization",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda gpu: gpu.utilization,
+    ),
+    HassioGPUSensorEntityDescription(
+        entity_registry_enabled_default=False,
+        key="memory_used",
+        translation_key="gpu_memory_used",
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        suggested_unit_of_measurement=UnitOfInformation.GIBIBYTES,
+        suggested_display_precision=2,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda gpu: gpu.memory_used,
+    ),
+    HassioGPUSensorEntityDescription(
+        entity_registry_enabled_default=False,
+        key="memory_percent",
+        translation_key="gpu_memory_percent",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_gpu_memory_percent,
+    ),
+    HassioGPUSensorEntityDescription(
+        entity_registry_enabled_default=False,
+        key="temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda gpu: gpu.temperature,
+    ),
+    HassioGPUSensorEntityDescription(
+        entity_registry_enabled_default=False,
+        key="power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda gpu: gpu.power,
     ),
 )
 
@@ -240,6 +307,18 @@ async def async_setup_entry(
         for entity_description in HOST_ENTITY_DESCRIPTIONS
     )
 
+    # Only statistics the driver reports when setting up
+    entities.extend(
+        HassioGPUSensor(
+            coordinator=stats_coordinator,
+            entity_description=entity_description,
+            gpu=gpu,
+        )
+        for gpu in stats_coordinator.data.gpus.values()
+        for entity_description in GPU_ENTITY_DESCRIPTIONS
+        if entity_description.value_fn(gpu) is not None
+    )
+
     # OS sensors
     if coordinator.is_hass_os:
         entities.extend(
@@ -299,3 +378,15 @@ class HostSensor(HassioHostEntity, SensorEntity):
     def native_value(self) -> str | float | None:
         """Return native value of entity."""
         return self.entity_description.value_fn(self)
+
+
+class HassioGPUSensor(HassioGPUEntity, SensorEntity):
+    """Sensor to track a statistic of a GPU of the host."""
+
+    entity_description: HassioGPUSensorEntityDescription
+
+    @property
+    @override
+    def native_value(self) -> float | None:
+        """Return native value of entity."""
+        return self.entity_description.value_fn(self.gpu)
