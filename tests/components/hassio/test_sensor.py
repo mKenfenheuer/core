@@ -416,3 +416,67 @@ async def test_gpu_sensors_no_data(
         if entry.unique_id.startswith("gpu_")
     ]
     assert log_message in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("side_effect", "return_value"),
+    [
+        pytest.param(None, HardwareGPU(gpus=[]), id="no-gpus"),
+        pytest.param(SupervisorError("nvidia-smi failed"), None, id="supervisor-error"),
+    ],
+)
+@pytest.mark.usefixtures("entity_registry_enabled_by_default")
+async def test_gpu_sensors_added_later(
+    hass: HomeAssistant,
+    supervisor_client: AsyncMock,
+    entity_registry: er.EntityRegistry,
+    freezer: FrozenDateTimeFactory,
+    caplog: pytest.LogCaptureFixture,
+    side_effect: Exception | None,
+    return_value: HardwareGPU | None,
+) -> None:
+    """Test sensors for GPUs that appear after setting up."""
+    supervisor_client.hardware.gpu.side_effect = side_effect
+    supervisor_client.hardware.gpu.return_value = return_value
+    config_entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=DOMAIN)
+    config_entry.add_to_hass(hass)
+    with patch.dict(os.environ, MOCK_ENVIRON):
+        assert await async_setup_component(hass, DOMAIN, {"hassio": {}})
+    await hass.async_block_till_done()
+
+    def gpu_unique_ids() -> list[str]:
+        return [
+            entry.unique_id
+            for entry in er.async_entries_for_config_entry(
+                entity_registry, config_entry.entry_id
+            )
+            if entry.unique_id.startswith("gpu_")
+        ]
+
+    assert not gpu_unique_ids()
+
+    supervisor_client.hardware.gpu.side_effect = None
+    supervisor_client.hardware.gpu.return_value = MOCK_GPUS
+    freezer.tick(HASSIO_STATS_UPDATE_INTERVAL + timedelta(seconds=1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+    assert hass.states.get(f"{GPU_ENTITY_PREFIX}_utilization").state == "7.0"
+    assert sorted(gpu_unique_ids()) == [
+        "gpu_0000:01:00.0_memory_percent",
+        "gpu_0000:01:00.0_memory_used",
+        "gpu_0000:01:00.0_power",
+        "gpu_0000:01:00.0_temperature",
+        "gpu_0000:01:00.0_utilization",
+    ]
+
+    # A GPU that disappears and reappears keeps its entities without duplicates
+    for result in (HardwareGPU(gpus=[]), MOCK_GPUS, MOCK_GPUS):
+        supervisor_client.hardware.gpu.return_value = result
+        freezer.tick(HASSIO_STATS_UPDATE_INTERVAL + timedelta(seconds=1))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done(wait_background_tasks=True)
+
+    assert hass.states.get(f"{GPU_ENTITY_PREFIX}_utilization").state == "7.0"
+    assert len(gpu_unique_ids()) == 5
+    assert "already exists" not in caplog.text

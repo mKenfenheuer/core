@@ -21,7 +21,7 @@ from homeassistant.const import (
     UnitOfPower,
     UnitOfTemperature,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import (
@@ -307,18 +307,6 @@ async def async_setup_entry(
         for entity_description in HOST_ENTITY_DESCRIPTIONS
     )
 
-    # Only statistics the driver reports when setting up
-    entities.extend(
-        HassioGPUSensor(
-            coordinator=stats_coordinator,
-            entity_description=entity_description,
-            gpu=gpu,
-        )
-        for gpu in stats_coordinator.data.gpus.values()
-        for entity_description in GPU_ENTITY_DESCRIPTIONS
-        if entity_description.value_fn(gpu) is not None
-    )
-
     # OS sensors
     if coordinator.is_hass_os:
         entities.extend(
@@ -330,6 +318,34 @@ async def async_setup_entry(
         )
 
     async_add_entities(entities)
+
+    # GPUs that disappear keep their entities, so they are never forgotten
+    known_gpus: set[str] = set()
+
+    @callback
+    def _check_gpus() -> None:
+        new_gpus = [
+            gpu
+            for address, gpu in stats_coordinator.data.gpus.items()
+            if address not in known_gpus
+        ]
+        if not new_gpus:
+            return
+        known_gpus.update(gpu.address for gpu in new_gpus)
+        # Only statistics the driver reports when the GPU first appears
+        async_add_entities(
+            HassioGPUSensor(
+                coordinator=stats_coordinator,
+                entity_description=entity_description,
+                gpu=gpu,
+            )
+            for gpu in new_gpus
+            for entity_description in GPU_ENTITY_DESCRIPTIONS
+            if entity_description.value_fn(gpu) is not None
+        )
+
+    _check_gpus()
+    config_entry.async_on_unload(stats_coordinator.async_add_listener(_check_gpus))
 
 
 class HassioAddonSensor(HassioAddonEntity, SensorEntity):
