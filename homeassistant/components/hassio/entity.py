@@ -22,20 +22,21 @@ from .const import CONTAINER_STATS, DOMAIN, GPU_VENDORS
 from .coordinator import (
     AddonData,
     HassioAddOnDataUpdateCoordinator,
+    HassioGPUDataUpdateCoordinator,
     HassioMainDataUpdateCoordinator,
     HassioStatsData,
     HassioStatsDataUpdateCoordinator,
 )
 
 
-class HassioGPUEntity(CoordinatorEntity[HassioStatsDataUpdateCoordinator]):
+class HassioGPUEntity(CoordinatorEntity[HassioGPUDataUpdateCoordinator]):
     """Base entity for a GPU of the host."""
 
     _attr_has_entity_name = True
 
     def __init__(
         self,
-        coordinator: HassioStatsDataUpdateCoordinator,
+        coordinator: HassioGPUDataUpdateCoordinator,
         entity_description: EntityDescription,
         gpu: GPU,
     ) -> None:
@@ -59,7 +60,7 @@ class HassioGPUEntity(CoordinatorEntity[HassioStatsDataUpdateCoordinator]):
 
     @property
     def _gpu(self) -> GPU | None:
-        return self.coordinator.data.gpus.get(self._address)
+        return (self.coordinator.data or {}).get(self._address)
 
     @property
     def gpu(self) -> GPU:

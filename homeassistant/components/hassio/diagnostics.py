@@ -10,7 +10,12 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from .const import ADDONS_COORDINATOR, MAIN_COORDINATOR, STATS_COORDINATOR
+from .const import (
+    ADDONS_COORDINATOR,
+    GPU_COORDINATOR,
+    MAIN_COORDINATOR,
+    STATS_COORDINATOR,
+)
 from .coordinator import (
     HassioAddOnDataUpdateCoordinator,
     HassioMainDataUpdateCoordinator,
@@ -26,6 +31,7 @@ async def async_get_config_entry_diagnostics(
     coordinator: HassioMainDataUpdateCoordinator = hass.data[MAIN_COORDINATOR]
     addons_coordinator: HassioAddOnDataUpdateCoordinator = hass.data[ADDONS_COORDINATOR]
     stats_coordinator: HassioStatsDataUpdateCoordinator = hass.data[STATS_COORDINATOR]
+    gpu_coordinator = hass.data[GPU_COORDINATOR]
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
@@ -60,5 +66,9 @@ async def async_get_config_entry_diagnostics(
         "coordinator_data": coordinator.data.to_dict(),
         "addons_coordinator_data": addons_coordinator.data.to_dict(),
         "stats_coordinator_data": stats_coordinator.data.to_dict(),
+        "gpu_coordinator_data": {
+            address: gpu.to_dict()
+            for address, gpu in (gpu_coordinator.data or {}).items()
+        },
         "devices": devices,
     }

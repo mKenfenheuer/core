@@ -75,6 +75,7 @@ from .const import (
     ENV_SUPERVISOR_TOKEN,
     EVENT_SUPERVISOR_EVENT,
     EVENT_SUPERVISOR_UPDATE,
+    GPU_COORDINATOR,
     ISSUE_KEY_SYSTEM_REBOOT_REQUIRED,
     ISSUE_MOUNT_MOUNT_FAILED,
     JOBS_COORDINATOR,
@@ -87,6 +88,7 @@ from .const import (
 )
 from .coordinator import (
     HassioAddOnDataUpdateCoordinator,
+    HassioGPUDataUpdateCoordinator,
     HassioMainDataUpdateCoordinator,
     HassioStatsDataUpdateCoordinator,
     IssueSubscription,
@@ -494,6 +496,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await stats_coordinator.async_config_entry_first_refresh()
     hass.data[STATS_COORDINATOR] = stats_coordinator
 
+    # GPU statistics are optional, an error must not stop the setup
+    gpu_coordinator = HassioGPUDataUpdateCoordinator(hass, entry)
+    await gpu_coordinator.async_refresh()
+    hass.data[GPU_COORDINATOR] = gpu_coordinator
+
     issues_coordinator = SupervisorIssuesCoordinator(hass, entry)
     hass.data[DATA_KEY_SUPERVISOR_ISSUES] = issues_coordinator
 
@@ -654,6 +661,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         hass.data.pop(MAIN_COORDINATOR, None)
         hass.data.pop(ADDONS_COORDINATOR, None)
         hass.data.pop(STATS_COORDINATOR, None)
+        hass.data.pop(GPU_COORDINATOR, None)
         hass.data.pop(JOBS_COORDINATOR, None)
         hass.data.pop(DATA_KEY_SUPERVISOR_ISSUES, None)
         hass.data.pop(DATA_AUTO_UPDATE, None)

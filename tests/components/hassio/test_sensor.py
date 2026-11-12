@@ -14,6 +14,8 @@ from pytest_homeassistant.common import MockConfigEntry, async_fire_time_changed
 from homeassistant import config_entries
 from homeassistant.components.hassio import DOMAIN
 from homeassistant.components.hassio.const import (
+    GPU_COORDINATOR,
+    HASSIO_GPU_UPDATE_INTERVAL,
     HASSIO_STATS_UPDATE_INTERVAL,
     REQUEST_REFRESH_DELAY,
 )
@@ -421,7 +423,7 @@ async def test_gpu_sensors(
     ]
 
     supervisor_client.hardware.gpu.return_value = HardwareGPU(gpus=[])
-    freezer.tick(HASSIO_STATS_UPDATE_INTERVAL + timedelta(seconds=1))
+    freezer.tick(HASSIO_GPU_UPDATE_INTERVAL + timedelta(seconds=1))
     async_fire_time_changed(hass)
     await hass.async_block_till_done(wait_background_tasks=True)
 
@@ -436,7 +438,7 @@ async def test_gpu_sensors(
         pytest.param(SupervisorNotFoundError(), "", id="supervisor-without-support"),
         pytest.param(
             SupervisorError("nvidia-smi failed"),
-            "Could not fetch GPU statistics: nvidia-smi failed",
+            "Error fetching hassio_gpu data: Error on Supervisor API: nvidia-smi failed",
             id="supervisor-error",
         ),
     ],
@@ -466,6 +468,10 @@ async def test_gpu_sensors_no_data(
         if entry.unique_id.startswith("gpu_")
     ]
     assert log_message in caplog.text
+    # A Supervisor without GPU support isn't asked again
+    assert (hass.data[GPU_COORDINATOR].update_interval is None) == isinstance(
+        side_effect, SupervisorNotFoundError
+    )
 
 
 @pytest.mark.parametrize(
@@ -507,7 +513,7 @@ async def test_gpu_sensors_added_later(
 
     supervisor_client.hardware.gpu.side_effect = None
     supervisor_client.hardware.gpu.return_value = MOCK_GPUS
-    freezer.tick(HASSIO_STATS_UPDATE_INTERVAL + timedelta(seconds=1))
+    freezer.tick(HASSIO_GPU_UPDATE_INTERVAL + timedelta(seconds=1))
     async_fire_time_changed(hass)
     await hass.async_block_till_done(wait_background_tasks=True)
 
@@ -523,7 +529,7 @@ async def test_gpu_sensors_added_later(
     # A GPU that disappears and reappears keeps its entities without duplicates
     for result in (HardwareGPU(gpus=[]), MOCK_GPUS, MOCK_GPUS):
         supervisor_client.hardware.gpu.return_value = result
-        freezer.tick(HASSIO_STATS_UPDATE_INTERVAL + timedelta(seconds=1))
+        freezer.tick(HASSIO_GPU_UPDATE_INTERVAL + timedelta(seconds=1))
         async_fire_time_changed(hass)
         await hass.async_block_till_done(wait_background_tasks=True)
 

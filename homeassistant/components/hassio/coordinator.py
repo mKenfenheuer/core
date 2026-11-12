@@ -3,7 +3,7 @@
 import asyncio
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 import logging
 from typing import Any, Literal, cast, override
 from uuid import UUID
@@ -100,6 +100,7 @@ from .const import (
     EVENT_SUPPORTED_CHANGED,
     EXTRA_PLACEHOLDERS,
     HASSIO_ADDON_UPDATE_INTERVAL,
+    HASSIO_GPU_UPDATE_INTERVAL,
     HASSIO_ISSUES_UPDATE_INTERVAL,
     HASSIO_MAIN_UPDATE_INTERVAL,
     HASSIO_STATS_UPDATE_INTERVAL,
@@ -883,12 +884,10 @@ class HassioStatsData:
     core: HomeAssistantStats | None
     supervisor: SupervisorStats | None
     addons: dict[str, AddonsStats | None]
-    gpus: dict[str, GPU] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a dictionary representation of the data."""
         return {
-            "gpus": {address: gpu.to_dict() for address, gpu in self.gpus.items()},
             "core": self.core.to_dict() if self.core is not None else None,
             "supervisor": (
                 self.supervisor.to_dict() if self.supervisor is not None else None
@@ -1262,20 +1261,7 @@ class HassioStatsDataUpdateCoordinator(DataUpdateCoordinator[HassioStatsData]):
             core=self.hass.data.get(DATA_CORE_STATS),
             supervisor=self.hass.data.get(DATA_SUPERVISOR_STATS),
             addons=self.hass.data.get(DATA_ADDONS_STATS) or {},
-            gpus=await self._fetch_gpus(),
         )
-
-    async def _fetch_gpus(self) -> dict[str, GPU]:
-        """Fetch GPUs of the host with current statistics."""
-        try:
-            result = await self.supervisor_client.hardware.gpu()
-        except SupervisorNotFoundError:
-            # Supervisor without GPU support
-            return {}
-        except SupervisorError as err:
-            _LOGGER.warning("Could not fetch GPU statistics: %s", err)
-            return {}
-        return {gpu.address: gpu for gpu in result.gpus}
 
     async def _fetch_stats(self) -> None:
         """Fetch container stats for subscribed entities."""
@@ -1351,6 +1337,40 @@ class HassioStatsDataUpdateCoordinator(DataUpdateCoordinator[HassioStatsData]):
                 self._container_updates.pop(slug, None)
 
         return _remove
+
+
+class HassioGPUDataUpdateCoordinator(DataUpdateCoordinator[dict[str, GPU]]):
+    """Class to retrieve the GPUs of the host with current statistics.
+
+    GPU utilization changes within seconds, so it has its own, shorter
+    interval than the container stats.
+    """
+
+    config_entry: ConfigEntry
+
+    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry) -> None:
+        """Initialize coordinator."""
+        super().__init__(
+            hass,
+            _LOGGER,
+            config_entry=config_entry,
+            name=f"{DOMAIN}_gpu",
+            update_interval=HASSIO_GPU_UPDATE_INTERVAL,
+        )
+        self.supervisor_client = get_supervisor_client(hass)
+
+    @override
+    async def _async_update_data(self) -> dict[str, GPU]:
+        """Update GPUs via library."""
+        try:
+            result = await self.supervisor_client.hardware.gpu()
+        except SupervisorNotFoundError:
+            # Supervisor without GPU support, it won't get it until updated
+            self.update_interval = None
+            return {}
+        except SupervisorError as err:
+            raise UpdateFailed(f"Error on Supervisor API: {err}") from err
+        return {gpu.address: gpu for gpu in result.gpus}
 
 
 class HassioAddOnDataUpdateCoordinator(DataUpdateCoordinator[HassioAddonData]):

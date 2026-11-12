@@ -29,6 +29,7 @@ from .const import (
     ATTR_CPU_PERCENT,
     ATTR_MEMORY_PERCENT,
     CORE_CONTAINER,
+    GPU_COORDINATOR,
     MAIN_COORDINATOR,
     STATS_COORDINATOR,
     SUPERVISOR_CONTAINER,
@@ -242,6 +243,7 @@ async def async_setup_entry(
     addons_coordinator = hass.data[ADDONS_COORDINATOR]
     coordinator = hass.data[MAIN_COORDINATOR]
     stats_coordinator = hass.data[STATS_COORDINATOR]
+    gpu_coordinator = hass.data[GPU_COORDINATOR]
 
     entities: list[SensorEntity] = []
 
@@ -335,7 +337,7 @@ async def async_setup_entry(
     def _check_gpus() -> None:
         new_gpus = [
             gpu
-            for address, gpu in stats_coordinator.data.gpus.items()
+            for address, gpu in (gpu_coordinator.data or {}).items()
             if address not in known_gpus
         ]
         if not new_gpus:
@@ -344,7 +346,7 @@ async def async_setup_entry(
         # Only statistics the driver reports when the GPU first appears
         async_add_entities(
             HassioGPUSensor(
-                coordinator=stats_coordinator,
+                coordinator=gpu_coordinator,
                 entity_description=entity_description,
                 gpu=gpu,
             )
@@ -354,7 +356,7 @@ async def async_setup_entry(
         )
 
     _check_gpus()
-    config_entry.async_on_unload(stats_coordinator.async_add_listener(_check_gpus))
+    config_entry.async_on_unload(gpu_coordinator.async_add_listener(_check_gpus))
 
 
 class HassioAddonSensor(HassioAddonEntity, SensorEntity):

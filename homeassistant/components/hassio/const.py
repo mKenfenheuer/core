@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from .auto_update import AutoUpdateManager
     from .coordinator import (
         HassioAddOnDataUpdateCoordinator,
+        HassioGPUDataUpdateCoordinator,
         HassioMainDataUpdateCoordinator,
         HassioStatsDataUpdateCoordinator,
         SupervisorIssuesCoordinator,
@@ -103,6 +104,9 @@ ADDONS_COORDINATOR: HassKey[HassioAddOnDataUpdateCoordinator] = HassKey(
 STATS_COORDINATOR: HassKey[HassioStatsDataUpdateCoordinator] = HassKey(
     "hassio_stats_coordinator"
 )
+GPU_COORDINATOR: HassKey[HassioGPUDataUpdateCoordinator] = HassKey(
+    "hassio_gpu_coordinator"
+)
 JOBS_COORDINATOR: HassKey[SupervisorJobsCoordinator] = HassKey(
     "hassio_jobs_coordinator"
 )
@@ -128,6 +132,7 @@ DATA_ADDONS_LIST: HassKey[list[InstalledAddon]] = HassKey("hassio_addons_list")
 HASSIO_MAIN_UPDATE_INTERVAL = timedelta(minutes=5)
 HASSIO_ADDON_UPDATE_INTERVAL = timedelta(minutes=15)
 HASSIO_STATS_UPDATE_INTERVAL = timedelta(seconds=60)
+HASSIO_GPU_UPDATE_INTERVAL = timedelta(seconds=10)
 HASSIO_ISSUES_UPDATE_INTERVAL = timedelta(minutes=30)
 SUPERVISOR_JOBS_UPDATE_INTERVAL = timedelta(minutes=15)
 
